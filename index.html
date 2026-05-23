@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Footlabs | Modular Engine</title>
+    <link href="https://fonts.googleapis.com/css2?family=Helvetica+Neue:wght@400;700&family=Roboto:wght@300;400;500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #f5f5f5; font-family: 'Helvetica Neue', 'Roboto', sans-serif; color: #111; }
+        #error-log { display: none; position: fixed; top: 0; left: 0; right: 0; background: #c92a2a; color: white; padding: 15px 30px; z-index: 9999; font-family: 'Share Tech Mono', monospace; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border-bottom: 4px solid #861616;}
+        #loading-screen { position: fixed; inset: 0; background: #ffffff; z-index: 3000; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.5s ease-out; pointer-events: none; }
+        .loader-logo { font-size: 24px; font-weight: 700; letter-spacing: 2px; margin-bottom: 20px; }
+        .progress-bar-container { width: 200px; height: 4px; background: #eee; border-radius: 2px; overflow: hidden;}
+        #progress-bar { width: 0%; height: 100%; background: #111; transition: width 0.1s; }
+        #onboarding { position: fixed; inset: 0; background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%); z-index: 2000; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.8s, transform 0.8s; color: #fff; }
+        #onboarding.hidden { opacity: 0; pointer-events: none; transform: scale(1.05); }
+        .logo-large { font-size: 36px; font-weight: 700; letter-spacing: 12px; color: #e6a822; margin-bottom: 40px; text-align: center; text-transform: uppercase;}
+        .wizard-container { width: 100%; max-width: 800px; position: relative; height: 350px; overflow: hidden; }
+        .wizard-step { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transform: translateX(50px); transition: all 0.6s cubic-bezier(0.25, 0.8, 0.25, 1); align-items: center; }
+        .wizard-step.active { opacity: 1; pointer-events: auto; transform: translateX(0); }
+        .wizard-step.exit { opacity: 0; transform: translateX(-50px); }
+        .question-title { font-size: 24px; font-weight: 300; margin-bottom: 10px; color: #fff; text-align: center;}
+        .question-sub { font-size: 14px; color: #888; margin-bottom: 30px; line-height: 1.5; text-align: center;}
+        .input-row { display: flex; gap: 15px; margin-bottom: 20px; width: 100%; max-width: 500px; }
+        .input-group { flex: 1; display: flex; flex-direction: column; }
+        .input-group label { font-size: 11px; color: #e6a822; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700;}
+        .input-group input, .input-group select { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 15px; font-size: 16px; border-radius: 8px; outline: none; transition: 0.3s; width: 100%; box-sizing: border-box;}
+        .input-group input:focus, .input-group select:focus { border-color: #e6a822; background: rgba(255,255,255,0.1); }
+        .input-group select option { background: #111; color: #fff; }
+        .btn-next { margin-top: auto; background: #e6a822; color: #000; border: none; padding: 18px 40px; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; border-radius: 30px; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 15px rgba(230, 168, 34, 0.2); }
+        .btn-next:hover { background: #fff; transform: translateY(-2px); }
+        .cards-container { display: flex; gap: 15px; justify-content: center; width: 100%;}
+        .mode-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 30px 15px; cursor: pointer; flex: 1; text-align: center; transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1); backdrop-filter: blur(5px); }
+        .mode-card:hover { background: rgba(230, 168, 34, 0.1); border-color: rgba(230, 168, 34, 0.5); transform: translateY(-8px); box-shadow: 0 15px 30px rgba(230, 168, 34, 0.15); }
+        .mode-card h3 { color: #e6a822; margin-top: 0; font-size: 15px; letter-spacing: 1px; margin-bottom: 10px; transition: 0.3s;}
+        .mode-card p { font-size: 11px; color: #aaa; line-height: 1.6; margin-bottom: 0;}
+        .progress-dots { display: flex; justify-content: center; gap: 10px; margin-top: 30px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.2); transition: 0.3s; }
+        .dot.active { background: #e6a822; transform: scale(1.3); }
+        #workspace { position: relative; width: 100vw; height: 100vh; visibility: hidden; overflow: hidden;}
+        #workspace.visible { visibility: visible; }
+        #canvas-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at center, #ffffff 0%, #e8e8e8 100%); cursor: crosshair; z-index: 1; }
+        .snapshot-btn { position: absolute; top: 20px; left: 20px; background: #fff; border: 1px solid #ddd; border-radius: 50%; width: 50px; height: 50px; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.05); z-index: 100; transition: 0.2s;}
+        .snapshot-btn:hover { transform: scale(1.1); border-color:#111;}
+        .snapshot-btn svg { width: 22px; height: 22px; stroke: #111; stroke-width: 2; fill: none; }
+        #toast-container { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 5000; display: flex; flex-direction: column; gap: 10px; pointer-events: none;}
+        .sys-toast { background: rgba(17, 17, 17, 0.9); backdrop-filter: blur(10px); color: #fff; padding: 12px 24px; border-radius: 30px; font-family: 'Share Tech Mono', monospace; font-size: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); animation: toastIn 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) forwards; text-align: center; letter-spacing: 0.5px;}
+        @keyframes toastIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        .toast-out { opacity: 0; transform: translateY(-20px); transition: 0.3s; }
+        #configurator-panel { position: absolute; top: 20px; right: 20px; bottom: 20px; width: 380px; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 16px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; border: 1px solid rgba(255,255,255,0.5); }
+        .panel-header { padding: 30px 30px 20px 30px; border-bottom: 1px solid #eee; text-align: center; position: relative;}
+        .panel-header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+        .mode-badge { font-family: 'Share Tech Mono', monospace; font-size: 10px; background: #111; color: #fff; padding: 3px 8px; border-radius: 10px; margin-top: 10px; display: inline-block; letter-spacing: 1px;}
+        #designer-header { display:none; margin-top:20px; border-top: 1px solid #eee; padding-top: 20px; pointer-events: none;}
+        #designer-progress { display: flex; gap: 5px; margin-bottom: 10px;}
+        .ds-step { flex: 1; height: 4px; background: #eee; border-radius: 2px; transition: 0.3s;}
+        .ds-step.active { background: #e6a822; }
+        #ds-title { font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color: #111;}
+        #active-part-display { background: #f8f9fa; border: 1px solid #e9ecef; padding: 15px; border-radius: 6px; font-size: 12px; font-weight: 700; color: #495057; text-transform: uppercase; transition: all 0.3s ease; margin-top: 15px; pointer-events: none;}
+        #active-part-display.active-state { background: #111; border-color: #111; color: #e6a822; }
+        #instruction-text { padding: 40px 30px; text-align: center; color: #6c757d; font-size: 14px; line-height: 1.6; pointer-events: none;}
+        .tool-panel { display: none; padding: 25px 30px; animation: slideDown 0.3s ease-out; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .option-label { font-size: 12px; font-weight: 700; color: #111; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px;}
+        .mat-grid { display: flex; gap: 10px; margin-bottom: 30px; }
+        .mat-btn { flex: 1; padding: 12px 5px; background: #fff; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 11px; font-weight: 500; cursor: pointer; transition: 0.2s; text-align: center; color: #111;}
+        .mat-btn:hover { border-color: #111; }
+        .mat-btn.selected { border-color: #111; border-width: 2px; padding: 11px 4px; font-weight: 700;}
+        .color-section { margin-bottom: 30px; }
+        .color-grid { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 15px;}
+        .color-swatch { width: 40px; height: 40px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: transform 0.1s; }
+        .color-swatch:hover { transform: scale(1.1); }
+        .color-swatch.selected { border: 2px solid #111; transform: scale(1.1); box-shadow: 0 0 0 2px #fff inset; }
+        .bg-white { background: #ffffff; border: 1px solid #ddd; }
+        .bg-black { background: #1a1a1a; }
+        .bg-sail { background: #f4f0e6; }
+        .bg-red { background: #c92a2a; }
+        .bg-blue { background: #1864ab; }
+        .bg-gum { background: #d0b084; }
+        .custom-color-container { position: relative; width: 100%; height: 50px; border-radius: 8px; overflow: hidden; background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000); box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 2px solid transparent; transition: 0.2s; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .custom-color-container:hover { border-color: #111; transform: translateY(-2px); }
+        .custom-color-container.selected { border-color: #111; box-shadow: 0 0 0 3px rgba(17,17,17,0.2); }
+        .custom-color-text { background: rgba(255,255,255,0.9); padding: 5px 15px; border-radius: 20px; font-size: 11px; font-weight: 700; color: #111; text-transform: uppercase; letter-spacing: 1px; pointer-events: none; }
+        #native-color-picker { position: absolute; top: -10px; left: -10px; width: 120%; height: 120%; opacity: 0; cursor: pointer; }
+        #sculpting-section { display:none; margin-top:30px; border-top: 1px solid #eee; padding-top: 25px; }
+        .slider-group { margin-bottom: 25px; }
+        .slider-group label { display: flex; justify-content: space-between; font-size: 11px; font-family: 'Share Tech Mono'; color: #555; margin-bottom: 8px; text-transform: uppercase;}
+        input[type="range"] { width: 100%; accent-color: #111; cursor: pointer; }
+        #safety-readout { background: #e8f5e9; border: 1px solid #c8e6c9; color: #2e7d32; padding: 15px; border-radius: 6px; font-family: 'Share Tech Mono'; font-size: 11px; margin-top: 30px; transition: 0.3s; pointer-events: none;}
+        #safety-readout.warning { background: #ffebee; border-color: #ffcdd2; color: #c62828; animation: pulse 1s infinite;}
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(229, 57, 53, 0); } 100% { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0); } }
+        .ds-controls { display: flex; justify-content: space-between; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;}
+        .ds-btn { padding: 12px 20px; border: 1px solid #111; background: transparent; border-radius: 30px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; transition: 0.2s; color: #111;}
+        .ds-btn:hover { background: #111; color: #fff;}
+        .ds-btn.primary { background: #111; color: #fff; width: 100%; margin-left: 10px;}
+        .ds-btn.primary:hover { background: #e6a822; color: #000; border-color: #e6a822;}
+        .checkout-area { margin: auto 30px 30px 30px; }
+        .price-display { display: flex; justify-content: space-between; font-size: 20px; font-weight: 700; border-top: 1px solid #eee; padding-top: 20px; margin-bottom: 20px;}
+        .checkout-btn { width: 100%; padding: 18px; background: #111; color: #fff; text-align: center; font-weight: 700; text-transform: uppercase; border-radius: 30px; cursor: pointer; transition: 0.2s; letter-spacing: 1px; border:none;}
+        .checkout-btn:hover { background: #e6a822; color: #000; transform: translateY(-2px); }
+        #checkout-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 4000; display: none; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s; }
+        .receipt-card { background: #fff; width: 400px; border-radius: 16px; padding: 40px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); transform: translateY(20px); transition: transform 0.3s; }
+        #checkout-modal.visible { display: flex; opacity: 1; }
+        #checkout-modal.visible .receipt-card { transform: translateY(0); }
+        .receipt-header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #111; padding-bottom: 20px;}
+        .receipt-header h2 { margin: 0; font-size: 24px; letter-spacing: 2px; font-weight: 900;}
+        .receipt-header p { margin: 5px 0 0 0; color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;}
+        .line-item { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 14px; color: #333;}
+        .line-item.bold { font-weight: 700; color: #111; font-size: 16px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px;}
+        .btn-confirm { background: #e6a822; color: #000; width: 100%; padding: 18px; border: none; border-radius: 30px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; margin-top: 30px; transition: 0.2s;}
+        .btn-confirm:hover { background: #111; color: #e6a822; }
+        .btn-close { text-align: center; margin-top: 15px; font-size: 12px; color: #888; cursor: pointer; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;}
+        .btn-close:hover { color: #111; }
+    </style>
+</head>
+<body>
+
+    <div id="error-log"></div>
+    <div id="loading-screen" style="display: none;">
+        <div class="loader-logo">FOOTLABS STUDIO</div>
+        <div class="progress-bar-container"><div id="progress-bar"></div></div>
+    </div>
+    <div id="toast-container"></div>
+    <div id="onboarding">
+        <div class="logo-large">FOOTLABS</div>
+        <div class="wizard-container">
+            <div class="wizard-step active" id="wiz-1">
+                <div class="question-title">Let's build your profile.</div>
+                <div class="question-sub">Basic biomechanical data helps us optimize the chassis.</div>
+                <div class="input-row">
+                    <div class="input-group"><label>Age</label><input type="number" placeholder="e.g. 28"></div>
+                    <div class="input-group"><label>Gender</label><select><option>Male</option><option>Female</option><option>Neutral</option></select></div>
+                </div>
+                <button class="btn-next" onclick="nextStep(1, 2)">Continue</button>
+            </div>
+            <div class="wizard-step" id="wiz-2">
+                <div class="question-title">What is your exact fit?</div>
+                <div class="question-sub">Precision engineering requires precise measurements.</div>
+                <div class="input-row">
+                    <div class="input-group"><label>Foot Size (UK)</label><input type="number" value="8" step="0.5"></div>
+                    <div class="input-group"><label>Foot Width</label><select><option>Standard (D)</option><option>Wide (EE)</option><option>Narrow (B)</option></select></div>
+                </div>
+                <button class="btn-next" onclick="nextStep(2, 3)">Continue</button>
+            </div>
+            <div class="wizard-step" id="wiz-3">
+                <div class="question-title">How will you move?</div>
+                <div class="question-sub">Select your primary activity and gait profile.</div>
+                <div class="input-row">
+                    <div class="input-group"><label>Activity</label><select id="usr-activity"><option value="casual">Everyday Casual</option><option value="running">Distance Running</option><option value="athletics">Athletics</option></select></div>
+                    <div class="input-group"><label>Pronation</label><select id="usr-pronation"><option value="neutral">Neutral</option><option value="overpronation">Overpronation</option></select></div>
+                </div>
+                <button class="btn-next" onclick="nextStep(3, 4)">Continue</button>
+            </div>
+            <div class="wizard-step" id="wiz-4">
+                <div class="question-title">Select Engine Mode</div>
+                <div class="question-sub">Choose your customization experience.</div>
+                <div class="cards-container">
+                    <div class="mode-card" onclick="launchStudio('template')">
+                        <h3>TEMPLATE</h3><p>Configure colors & materials on predefined models.</p>
+                    </div>
+                    <div class="mode-card" onclick="launchStudio('advanced')">
+                        <h3>ADVANCED CAD</h3><p>Unlock parametric sizing and surface details.</p>
+                    </div>
+                    <div class="mode-card" onclick="launchStudio('designer')">
+                        <h3>MODULAR BUILD</h3><p>Guided assembly using your custom Onshape modules.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="progress-dots">
+            <div class="dot active" id="dot-1"></div><div class="dot" id="dot-2"></div><div class="dot" id="dot-3"></div><div class="dot" id="dot-4"></div>
+        </div>
+    </div>
+
+    <div id="workspace">
+        <div id="canvas-container"></div>
+        <div class="snapshot-btn" id="snapshot-btn" onclick="takeSnapshot()" title="Save Image">
+            <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+        </div>
+        <div id="configurator-panel">
+            <div class="panel-header">
+                <h1>DESIGN YOUR OWN</h1>
+                <div class="mode-badge" id="mode-badge">TEMPLATE MODE</div>
+                <div id="designer-header">
+                    <div id="designer-progress">
+                        <div class="ds-step active" id="ds-p1"></div><div class="ds-step" id="ds-p2"></div><div class="ds-step" id="ds-p3"></div>
+                    </div>
+                    <div id="ds-title">1. Construct Sole</div>
+                </div>
+                <div id="active-part-display">Waiting for selection...</div>
+            </div>
+
+            <div id="instruction-text">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2" style="margin-bottom:10px;">
+                    <circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path>
+                </svg><br>
+                <span style="color:#111;"><b>Right-Click and Drag</b> anywhere to rotate.</span><br><br>
+                <span id="click-instruction"><b>Left-Click</b> directly on any part to customize it.</span>
+            </div>
+
+            <div id="shared-tools" class="tool-panel">
+                <div id="ds-upper-tools" style="display:none; margin-bottom: 25px; padding-bottom: 25px; border-bottom: 1px solid #eee;">
+                    <div class="option-label" style="color:#e6a822;">Structural Cut</div>
+                    <div class="mat-grid" style="margin-bottom:0;">
+                        <button class="mat-btn selected" onclick="simulateHighTop('low', this)">Low Top</button>
+                        <button class="mat-btn" onclick="simulateHighTop('high', this)">High Top</button>
+                    </div>
+                </div>
+
+                <div class="option-label">1. Material Physics & Textures</div>
+                <div class="mat-grid" id="mat-container">
+                    <button class="mat-btn selected" data-mat="standard" onclick="applyMaterial('standard', this)">Matte Leather</button>
+                    <button class="mat-btn" data-mat="foam" onclick="applyMaterial('foam', this)">Suede / Foam</button>
+                    <button class="mat-btn" data-mat="glossy" onclick="applyMaterial('glossy', this)">Glossy Poly</button>
+                </div>
+                
+                <div class="mat-grid" id="advanced-textures" style="display:none; margin-top:-20px;">
+                    <button class="mat-btn selected" onclick="applyTexture('smooth', this)">Smooth</button>
+                    <button class="mat-btn" onclick="applyTexture('carbon', this)">Carbon Mesh</button>
+                    <button class="mat-btn" onclick="applyTexture('ribbed', this)">Ribbed Grip</button>
+                </div>
+
+                <div class="color-section">
+                    <div class="option-label">2. Curated Colors</div>
+                    <div class="color-grid" id="curated-colors">
+                        <div class="color-swatch bg-white" onclick="applyCuratedColor('#ffffff', this)"></div>
+                        <div class="color-swatch bg-black" onclick="applyCuratedColor('#1a1a1a', this)"></div>
+                        <div class="color-swatch bg-sail" onclick="applyCuratedColor('#f4f0e6', this)"></div>
+                        <div class="color-swatch bg-red" onclick="applyCuratedColor('#c92a2a', this)"></div>
+                        <div class="color-swatch bg-blue" onclick="applyCuratedColor('#1864ab', this)"></div>
+                        <div class="color-swatch bg-gum" onclick="applyCuratedColor('#d0b084', this)"></div>
+                    </div>
+                </div>
+
+                <div class="color-section">
+                    <div class="option-label">3. Custom Spectrum</div>
+                    <div class="custom-color-container" id="gradient-btn">
+                        <div class="custom-color-text">Open Color Wheel</div>
+                        <input type="color" id="native-color-picker" oninput="applyCustomColor(this.value)">
+                    </div>
+                </div>
+
+                <div id="sculpting-section" style="display:none; margin-top:30px; border-top: 1px solid #eee; padding-top: 25px;">
+                    <div class="option-label" style="color: #e6a822;">4. Boolean Sculpting</div>
+                    <p style="font-size: 11px; color: #888; margin-top: -10px; margin-bottom: 15px;">Click anywhere on the active part to place markers.</p>
+                    <div class="mat-grid">
+                        <button class="mat-btn selected" onclick="setSculptTool('none', this)">None</button>
+                        <button class="mat-btn" onclick="setSculptTool('cylinder', this)">Cylinder</button>
+                        <button class="mat-btn" onclick="setSculptTool('cuboid', this)">Cuboid</button>
+                    </div>
+                    <div id="sculpt-controls" style="display:none; margin-bottom: 15px;">
+                        <div class="slider-group">
+                            <label><span>Cut Tool Size</span> <span id="val-sculpt">0.50</span></label>
+                            <input type="range" id="tool-size" min="0.1" max="2.0" step="0.1" value="0.5" oninput="document.getElementById('val-sculpt').innerText=parseFloat(this.value).toFixed(2)">
+                        </div>
+                        <div style="display: flex; gap: 10px; width: 100%; margin-top: 15px;">
+                            <button class="ds-btn" style="flex: 1; margin:0;" onclick="undoCarve()">UNDO</button>
+                            <button class="ds-btn primary" style="flex: 2; margin:0; background: #c92a2a; border-color: #c92a2a;" onclick="executeCarve()">CARVE highlighted spots</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="cad-sliders" style="display:none; margin-top:30px; border-top: 1px solid #eee; padding-top: 25px;">
+                    <div class="option-label">Parametric Manipulation</div>
+                    <div class="slider-group"><label><span>X-Axis (Width)</span> <span id="val-x">1.00</span></label><input type="range" id="scale-x" min="0.8" max="1.5" step="0.05" value="1" oninput="applyScale('x', this.value)"></div>
+                    <div class="slider-group"><label><span>Y-Axis (Thickness)</span> <span id="val-y">1.00</span></label><input type="range" id="scale-y" min="0.5" max="2.0" step="0.05" value="1" oninput="applyScale('y', this.value)"></div>
+                    <div class="slider-group"><label><span>Z-Axis (Length)</span> <span id="val-z">1.00</span></label><input type="range" id="scale-z" min="0.9" max="1.2" step="0.05" value="1" oninput="applyScale('z', this.value)"></div>
+                    <div id="safety-readout">SYS.CHECK: Biomechanics Nominal.<br>Structure within safe limits.</div>
+                </div>
+
+                <div id="designer-nav" class="ds-controls" style="display:none;">
+                    <button class="ds-btn" id="ds-prev" style="display:none;" onclick="designerStep(-1)">Back</button>
+                    <button class="ds-btn primary" id="ds-next" onclick="designerStep(1)">Next Phase</button>
+                </div>
+            </div>
+
+            <div style="flex-grow: 1;"></div>
+            
+            <div class="checkout-area" id="checkout-footer">
+                <div class="price-display"><span>Total Price</span><span id="price-tag">$120</span></div>
+                <button class="checkout-btn" onclick="showCheckout()">Finish Design</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="checkout-modal">
+        <div class="receipt-card">
+            <div class="receipt-header"><h2>FOOTLABS</h2><p>Order Summary</p></div>
+            <div class="line-item"><span>Base Chassis</span><span>$120.00</span></div>
+            <div class="line-item" id="receipt-materials"><span>Material Upcharges</span><span>$0.00</span></div>
+            <div class="line-item" id="receipt-advanced" style="display:none; color: #e6a822;"><span>Advanced CAD Engine Fee</span><span>$50.00</span></div>
+            <div class="line-item" id="receipt-designer" style="display:none; color: #e6a822;"><span>Bespoke Design Fee</span><span>$80.00</span></div>
+            <div class="line-item bold"><span>Total Due</span><span id="receipt-total">$120.00</span></div>
+            <button class="btn-confirm" onclick="alert('Order Sent to Manufacturing!')">Confirm & Build</button>
+            <div class="btn-close" onclick="closeCheckout()">Return to Studio</div>
+        </div>
+    </div>
+
+<script>
+const ONSHAPE_FIX = { sole: { rx: 0, ry: 0, rz: 0 }, upper: { rx: -Math.PI / 2, ry: 0, rz: 0 }, laces: { rx: -Math.PI / 2, ry: 0, rz: 0 } };
+
+document.addEventListener('contextmenu', e => { if(e.target.tagName !== 'INPUT') e.preventDefault(); });
+
+let currentMode = 'template';
+let userActivity = 'casual', userPronation = 'neutral';
+let basePrice = 120, partMaterials = {}; 
+let proceduralTextures = {}; 
+let designerCurrentStep = 1;
+
+let shoeModules = { sole: null, upper: null, laces: null };
+
+// 🚀 Track materials exactly per-segment by mesh name
+let segmentMaterialState = {}; 
+let originalColors = {};
+
+let currentSculptTool = 'none';
+let sculptMarkers = [];
+let markerGroup = new THREE.Group();
+let lastSelectedCategory = 'upper';
+
+function showToast(message) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'sys-toast';
+    toast.innerHTML = "<b>[SYS]</b> " + message;
+    container.appendChild(toast);
+    setTimeout(() => { toast.classList.add('toast-out'); setTimeout(() => toast.remove(), 300); }, 3000);
+}
+
+// 🧹 Clear server-side memory at start of new session
+function resetServerState() {
+    fetch('/reset-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categories: ['upper', 'sole'] })
+    })
+    .catch(error => console.warn("Reset offline."));
+}
+
+function nextStep(current, next) {
+    document.getElementById('wiz-' + current).classList.remove('active');
+    document.getElementById('wiz-' + current).classList.add('exit');
+    document.getElementById('wiz-' + next).classList.remove('exit');
+    document.getElementById('wiz-' + next).classList.add('active');
+    document.getElementById('dot-' + current).classList.remove('active');
+    document.getElementById('dot-' + next).classList.add('active');
+}
+
+let scene, camera, renderer, controls, shoe;
+let activePart = null, hoveredPart = null, selectableParts = [];
+const manager = new THREE.LoadingManager();
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+function launchStudio(mode) {
+    resetServerState(); 
+
+    currentMode = mode;
+    userActivity = document.getElementById('usr-activity').value;
+    userPronation = document.getElementById('usr-pronation').value;
+    
+    document.getElementById('mode-badge').innerText = mode.toUpperCase() + (mode==='designer'?" BUILD":" MODE");
+    
+    if(mode === 'designer') {
+        document.getElementById('sculpting-section').style.display = 'block'; 
+        document.getElementById('instruction-text').style.display = 'none';
+        document.getElementById('active-part-display').style.display = 'none';
+        document.getElementById('designer-header').style.display = 'block';
+        document.getElementById('checkout-footer').style.display = 'none';
+        document.getElementById('designer-nav').style.display = 'flex';
+        document.getElementById('advanced-textures').style.display = 'flex';
+    } else if (mode === 'advanced') {
+        document.getElementById('advanced-textures').style.display = 'flex';
+    }
+
+    const onboardElement = document.getElementById('onboarding');
+    onboardElement.classList.add('hidden');
+    setTimeout(() => { onboardElement.style.display = 'none'; }, 800); 
+
+    document.getElementById('workspace').classList.add('visible');
+    document.getElementById('loading-screen').style.display = 'flex';
+    document.getElementById('loading-screen').style.opacity = '1';
+    
+    if(mode !== 'template') generateTextures(); 
+    init3DEnvironment();
+    calculatePrice(); 
+}
+
+function init3DEnvironment() {
+    const container = document.getElementById('canvas-container');
+    scene = new THREE.Scene();
+
+    camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(12, 4, 12); 
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 5;
+    controls.maxDistance = 20;
+    controls.enablePan = false; 
+    controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+    controls.maxPolarAngle = Math.PI / 2; 
+    controls.target.set(-1.5, 0, 0); 
+    controls.update();
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    keyLight.position.set(10, 15, 10);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.width = 2048;
+    keyLight.shadow.mapSize.height = 2048;
+    scene.add(keyLight);
+    
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+    fillLight.position.set(-10, 10, -10);
+    scene.add(fillLight);
+
+    const floorGeo = new THREE.PlaneGeometry(100, 100);
+    const floorMat = new THREE.ShadowMaterial({ opacity: 0.1 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -1;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    shoe = new THREE.Group();
+    scene.add(shoe);
+    scene.add(markerGroup); 
+
+    const loader = new THREE.GLTFLoader(manager);
+    let expectedFiles = 0;
+    let loadedFiles = 0;
+
+    const checkAllLoaded = () => {
+        loadedFiles++;
+        if (loadedFiles === expectedFiles) finalizeEngineSetup();
+    };
+
+    const loadModule = (filename, category, isMonolithic = false) => {
+        expectedFiles++;
+        loader.load('models/' + filename + '?t=' + new Date().getTime(), (gltf) => {
+            let rawGroup = gltf.scene;
+            
+            if (!isMonolithic) {
+                rawGroup.rotation.set(0, 0, 0);
+                rawGroup.updateMatrixWorld(true);
+                
+                let box = new THREE.Box3().setFromObject(rawGroup);
+                let center = new THREE.Vector3();
+                if(!box.isEmpty() && isFinite(box.max.y)) box.getCenter(center);
+                rawGroup.position.set(-center.x, -center.y, -center.z);
+                rawGroup.updateMatrixWorld(true);
+                
+                let wrapper = new THREE.Group();
+                wrapper.userData.category = category;
+                wrapper.userData.name = category.toUpperCase();
+                wrapper.userData.baseScale = new THREE.Vector3(1, 1, 1);
+                wrapper.rotation.y = -Math.PI / 2; 
+                
+                wrapper.add(rawGroup);
+                shoeModules[category] = wrapper;
+                shoe.add(wrapper);
+            } else {
+                rawGroup.userData.category = category;
+                rawGroup.userData.name = category.toUpperCase();
+                rawGroup.userData.baseScale = rawGroup.scale.clone();
+                shoeModules[category] = rawGroup;
+                shoe.add(rawGroup);
+            }
+
+            let targetGroup = isMonolithic ? rawGroup : shoeModules[category];
+            originalColors[category] = originalColors[category] || {};
+            
+            targetGroup.traverse(node => {
+                if(node.isMesh) {
+                    node.castShadow = true; node.receiveShadow = true;
+                    // 🚀 Save the exact initial color of this specific panel
+                    let originalColor = node.material && node.material.color ? node.material.color.clone() : new THREE.Color(0xffffff);
+                    originalColors[category][node.name] = originalColor.getHex();
+                    
+                    node.material = new THREE.MeshStandardMaterial({ color: originalColor, roughness: 0.6, metalness: 0.1, side: THREE.DoubleSide });
+                    node.userData.baseScale = node.scale.clone();
+                    node.userData.parentModule = targetGroup; 
+                    
+                    if (isMonolithic) {
+                        let n = node.name.toUpperCase();
+                        if(n.includes('SOLE') || n.includes('BOTTOM')) node.userData.category = 'sole';
+                        else if(n.includes('LACE') || n.includes('AGLET')) node.userData.category = 'laces';
+                        else node.userData.category = 'upper';
+                    } else {
+                        node.userData.category = category;
+                    }
+                    selectableParts.push(node); 
+                }
+            });
+
+            checkAllLoaded();
+            
+        }, undefined, (e) => {
+            if (filename === 'laces.glb') {
+                let emptyLaces = new THREE.Group();
+                emptyLaces.userData.category = 'laces';
+                shoeModules['laces'] = emptyLaces;
+                shoe.add(emptyLaces);
+            }
+            checkAllLoaded();
+        });
+    };
+
+    if (currentMode === 'template' || currentMode === 'advanced') {
+        loadModule('updatedshoe.glb', 'sole', true); 
+    } else if (currentMode === 'designer') {
+        loadModule('sole 1.gltf', 'sole', false);
+        loadModule('upper.gltf', 'upper', false);
+        loadModule('laces.glb', 'laces', false); 
+    }
+
+    manager.onProgress = (url, itemsLoaded, itemsTotal) => { document.getElementById('progress-bar').style.width = Math.floor((itemsLoaded / itemsTotal) * 100) + '%'; };
+    
+    window.updateStackTargets = function() {
+        if (currentMode !== 'designer' || !shoeModules.sole || !shoeModules.upper) return;
+        shoeModules.sole.updateMatrixWorld(true);
+        let soleBox = new THREE.Box3().setFromObject(shoeModules.sole);
+        let rawUpper = shoeModules.upper.children[0];
+        if (!rawUpper) return;
+        rawUpper.updateMatrixWorld(true);
+        let upperBox = new THREE.Box3().setFromObject(rawUpper);
+        
+        let soleHeight = soleBox.max.y - soleBox.min.y;
+        let upperHeight = upperBox.max.y - upperBox.min.y;
+        let stackY = (soleHeight / 2) + (upperHeight / 2) +0.0001; 
+        shoeModules.upper.userData.targetY = stackY;
+        
+        if (shoeModules.laces && shoeModules.laces.children.length > 0) {
+            let rawLaces = shoeModules.laces.children[0];
+            rawLaces.updateMatrixWorld(true);
+            let lacesBox = new THREE.Box3().setFromObject(rawLaces);
+            let lacesHeight = lacesBox.max.y - lacesBox.min.y;
+            shoeModules.laces.userData.targetY = stackY + (upperHeight / 2) + (lacesHeight / 2) - 0.05;
+        }
+    };
+
+    function finalizeEngineSetup() {
+        if (currentMode === 'designer' && shoeModules.sole && shoeModules.upper) {
+            window.updateStackTargets();
+            shoeModules.upper.position.y = shoeModules.upper.userData.targetY;
+            if(shoeModules.laces && shoeModules.laces.userData.targetY !== undefined) {
+                shoeModules.laces.position.y = shoeModules.laces.userData.targetY;
+            }
+        }
+        const combinedBox = new THREE.Box3().setFromObject(shoe);
+        if(!combinedBox.isEmpty()) {
+            const center = combinedBox.getCenter(new THREE.Vector3());
+            const size = combinedBox.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            if (maxDim > 0 && maxDim !== Infinity && !isNaN(maxDim)) {
+                const scale = 8 / maxDim;
+                shoe.scale.set(scale, scale, scale);
+                shoe.position.sub(center.multiplyScalar(scale));
+                shoe.position.y += 0.5;
+                shoe.position.x -= 1.5; 
+                shoe.updateMatrixWorld(true);
+            }
+        }
+        if (currentMode === 'designer') {
+            Object.values(shoeModules).forEach(mod => {
+                if (mod) {
+                    mod.userData.basePos = mod.position.clone();
+                    if (mod.userData.targetY === undefined) mod.userData.targetY = mod.position.y;
+                    mod.visible = false; 
+                }
+            });
+            if(shoeModules.sole) shoeModules.sole.visible = true; 
+        } else {
+            selectableParts.forEach(p => {
+                p.userData.basePos = p.position.clone();
+                p.userData.targetY = p.position.y;
+            });
+        }
+        const loadScreen = document.getElementById('loading-screen');
+        loadScreen.style.opacity = '0';
+        setTimeout(() => { 
+            loadScreen.style.display = 'none'; 
+            if(currentMode === 'designer') {
+                showToast("Studio locked to Auto-Snapping Assembly.");
+                designerStep(0); 
+            } else {
+                document.getElementById('instruction-text').style.display = 'block';
+            }
+        }, 500);
+    }
+
+    renderer.domElement.addEventListener('pointermove', (e) => {
+        if (e.buttons > 0) return; 
+        const rect = container.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        
+        let validMeshes = currentMode === 'designer' ? selectableParts.filter(p => p.userData.parentModule.visible !== false) : selectableParts;
+        const hits = raycaster.intersectObjects(validMeshes, true);
+
+        if (currentSculptTool === 'none') {
+            if (hoveredPart && hoveredPart !== activePart) hoveredPart.material.emissive.setHex(0x000000);
+            if (hits.length > 0) {
+                hoveredPart = hits[0].object; 
+                container.style.cursor = 'crosshair';
+                if (hoveredPart !== activePart) hoveredPart.material.emissive.setHex(0x222222);
+            } else {
+                hoveredPart = null;
+                container.style.cursor = 'default';
+            }
+        } else {
+            container.style.cursor = hits.length > 0 ? 'crosshair' : 'default';
+        }
+    });
+
+    renderer.domElement.addEventListener('pointerup', (e) => {
+        if (e.button !== 0) return; 
+        const rect = container.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        
+        let validMeshes = currentMode === 'designer' ? selectableParts.filter(p => p.userData.parentModule.visible !== false) : selectableParts;
+        const hits = raycaster.intersectObjects(validMeshes, true);
+        
+        if (currentSculptTool !== 'none' && activePart) {
+            const markerHits = raycaster.intersectObjects(markerGroup.children, true);
+            if (markerHits.length > 0) {
+                let clickedMarker = markerHits[0].object;
+                markerGroup.remove(clickedMarker);
+                sculptMarkers = sculptMarkers.filter(m => m !== clickedMarker);
+                return; 
+            }
+            if (hits.length > 0) {
+                let clickedPart = hits[0].object;
+                if (clickedPart.userData.parentModule !== activePart.userData.parentModule) {
+                    selectPart(clickedPart);
+                    return; 
+                }
+            }
+            let targetGroupToClick = activePart.userData.parentModule ? activePart.userData.parentModule : activePart;
+            const surfaceHits = raycaster.intersectObject(targetGroupToClick, true);
+            
+            if (surfaceHits.length > 0) {
+                let intersect = surfaceHits[0];
+                let size = parseFloat(document.getElementById('tool-size').value);
+                
+                let geo = currentSculptTool === 'cylinder' ? new THREE.CylinderGeometry(size, size, 20, 32) : new THREE.BoxGeometry(size * 2, 20, size * 2);
+                let mat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5, depthTest: false });
+                let marker = new THREE.Mesh(geo, mat);
+                marker.position.copy(intersect.point);
+                
+                let normalMatrix = new THREE.Matrix3().getNormalMatrix(intersect.object.matrixWorld);
+                let worldNormal = intersect.face.normal.clone().applyMatrix3(normalMatrix).normalize();
+                
+                marker.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), worldNormal);
+                if (currentSculptTool === 'cylinder') marker.rotateX(Math.PI / 2);
+                
+                markerGroup.add(marker);
+                sculptMarkers.push(marker);
+            }
+            return; 
+        }
+        if (hits.length > 0) selectPart(hits[0].object);
+    });
+
+    animate();
+}
+
+function selectPart(target) {
+    if(activePart) activePart.material.emissive.setHex(0x000000);
+    activePart = target; 
+    lastSelectedCategory = target.userData.category || 'upper';
+    activePart.material.emissive.setHex(0x555555);
+    setTimeout(() => { if(activePart) activePart.material.emissive.setHex(0x333333); }, 200);
+
+    document.getElementById('instruction-text').style.display = 'none';
+    document.getElementById('shared-tools').style.display = 'block';
+    
+    let state = segmentMaterialState[activePart.name] || { type: 'standard', color: activePart.material.color.getHexString() };
+    document.getElementById('native-color-picker').value = "#" + state.color;
+    document.querySelectorAll('#mat-container .mat-btn').forEach(btn => btn.classList.remove('selected'));
+    let matBtn = document.querySelector('#mat-container .mat-btn[data-mat="' + state.type + '"]');
+    if(matBtn) matBtn.classList.add('selected');
+    
+    clearColorSelections();
+    
+    if(currentMode === 'advanced' || currentMode === 'designer') {
+        if (currentSculptTool === 'none') document.getElementById('cad-sliders').style.display = 'block';
+        let targetMod = currentMode === 'designer' && activePart.userData.parentModule ? activePart.userData.parentModule : activePart;
+        if (!targetMod.userData.baseScale) targetMod.userData.baseScale = targetMod.scale.clone();
+        let mapX = currentMode === 'designer' ? 'z' : 'x';
+        let mapZ = currentMode === 'designer' ? 'x' : 'z';
+        document.getElementById('scale-x').value = targetMod.scale[mapX] / targetMod.userData.baseScale[mapX];
+        document.getElementById('scale-y').value = targetMod.scale.y / targetMod.userData.baseScale.y;
+        document.getElementById('scale-z').value = targetMod.scale[mapZ] / targetMod.userData.baseScale[mapZ];
+        updateSliderText();
+        runSafetyEngine(document.getElementById('scale-y').value, 'y');
+    }
+    const displayBox = document.getElementById('active-part-display');
+    let niceName = activePart.name.replace(/_/g, ' ');
+    if (niceName.includes('Mesh')) niceName = activePart.userData.category.toUpperCase() + " SECTION";
+    displayBox.innerText = "EDITING: " + niceName;
+    displayBox.classList.add('active-state');
+}
+
+function designerStep(direction) {
+    designerCurrentStep += direction;
+    document.getElementById('ds-p1').classList.remove('active');
+    document.getElementById('ds-p2').classList.remove('active');
+    document.getElementById('ds-p3').classList.remove('active');
+    document.getElementById('shared-tools').style.display = 'block';
+
+    let dropOffset = shoe && shoe.scale.y ? 8 / shoe.scale.y : 8; 
+
+    if(designerCurrentStep === 1) {
+        document.getElementById('ds-p1').classList.add('active');
+        document.getElementById('ds-title').innerText = "1. Construct Sole";
+        document.getElementById('ds-prev').style.display = 'none';
+        document.getElementById('ds-next').innerText = "Next Phase";
+        document.getElementById('ds-upper-tools').style.display = 'none';
+        document.getElementById('cad-sliders').style.display = 'block'; 
+        camera.position.set(-1.5, 2, 10); controls.target.set(-1.5, 0, 0); controls.update();
+        if (shoeModules.sole) {
+            shoeModules.sole.visible = true; shoeModules.sole.position.y = shoeModules.sole.userData.basePos.y + dropOffset; 
+            let first = null; shoeModules.sole.traverse(n => {if(n.isMesh && !first) first = n;});
+            if(first) selectPart(first);
+        }
+        if (shoeModules.upper) shoeModules.upper.visible = false;
+        if (shoeModules.laces) shoeModules.laces.visible = false;
+    } 
+    else if (designerCurrentStep === 2) {
+        document.getElementById('ds-p1').classList.add('active'); document.getElementById('ds-p2').classList.add('active');
+        document.getElementById('ds-title').innerText = "2. Construct Upper";
+        document.getElementById('ds-prev').style.display = 'block'; document.getElementById('ds-next').innerText = "Next Phase";
+        document.getElementById('ds-upper-tools').style.display = 'block'; document.getElementById('cad-sliders').style.display = 'block'; 
+        camera.position.set(8, 6, 8); controls.target.set(-1.5, 1, 0); controls.update();
+        if (shoeModules.upper) {
+            shoeModules.upper.visible = true; shoeModules.upper.position.y = shoeModules.upper.userData.basePos.y + dropOffset;
+            let first = null; shoeModules.upper.traverse(n => {if(n.isMesh && !first) first = n;});
+            if(first) selectPart(first);
+        }
+    }
+    else if (designerCurrentStep === 3) {
+        document.getElementById('ds-p1').classList.add('active'); document.getElementById('ds-p2').classList.add('active'); document.getElementById('ds-p3').classList.add('active');
+        document.getElementById('ds-title').innerText = "3. Accents & Details";
+        document.getElementById('ds-next').innerText = "Finish Design";
+        document.getElementById('ds-upper-tools').style.display = 'none'; document.getElementById('cad-sliders').style.display = 'none'; 
+        camera.position.set(-1.5, 10, 2); controls.target.set(-1.5, 0, 0); controls.update();
+        if (shoeModules.laces && shoeModules.laces.children.length > 0) {
+            shoeModules.laces.visible = true; shoeModules.laces.position.y = shoeModules.laces.userData.basePos.y + dropOffset;
+            let first = null; shoeModules.laces.traverse(n => {if(n.isMesh && !first) first = n;});
+            if(first) selectPart(first);
+        } else {
+             if (shoeModules.upper) {
+                 let first = null; shoeModules.upper.traverse(n => {if(n.isMesh && !first) first = n;});
+                 if(first) selectPart(first);
+             }
+        }
+    }
+    else if (designerCurrentStep > 3) { showCheckout(); designerCurrentStep = 3; }
+}
+
+window.simulateHighTop = (type, btn) => {
+    if(!activePart) return;
+    document.querySelectorAll('#ds-upper-tools .mat-btn').forEach(b => b.classList.remove('selected')); btn.classList.add('selected');
+    let targetMod = currentMode === 'designer' && activePart.userData.parentModule ? activePart.userData.parentModule : activePart;
+    if(!targetMod) return;
+
+    if(type === 'high') {
+        targetMod.scale.y = targetMod.userData.baseScale.y * 1.5; targetMod.userData.targetY += 0.8; 
+    } else {
+        targetMod.scale.y = targetMod.userData.baseScale.y; targetMod.userData.targetY -= 0.8;
+    }
+    window.updateStackTargets();
+};
+
+window.applyScale = (axis, value) => {
+    if(!activePart) return;
+    const newScale = parseFloat(value);
+    let targetMod = currentMode === 'designer' && activePart.userData.parentModule ? activePart.userData.parentModule : activePart;
+    if (!targetMod.userData.baseScale) targetMod.userData.baseScale = targetMod.scale.clone();
+    let targetAxis = axis;
+    if (currentMode === 'designer') { if (axis === 'x') targetAxis = 'z'; else if (axis === 'z') targetAxis = 'x'; }
+    targetMod.scale[targetAxis] = targetMod.userData.baseScale[targetAxis] * newScale;
+    updateSliderText();
+    
+    if(currentMode === 'designer' && targetMod === shoeModules.sole && axis === 'y') window.updateStackTargets();
+    else if (currentMode !== 'designer' && activePart.userData.category === 'sole' && axis === 'y') {
+        const delta = (newScale - 1) * 0.4; 
+        selectableParts.forEach(node => { if(node.userData.category !== 'sole') node.userData.targetY = node.userData.basePos.y + delta; });
+    }
+    runSafetyEngine(newScale, axis);
+};
+
+function updateSliderText() {
+    document.getElementById('val-x').innerText = document.getElementById('scale-x').value;
+    document.getElementById('val-y').innerText = document.getElementById('scale-y').value;
+    document.getElementById('val-z').innerText = document.getElementById('scale-z').value;
+}
+
+function runSafetyEngine(scaleVal, axis) {
+    const readout = document.getElementById('safety-readout');
+    let cat = activePart.userData.category;
+    if(cat === 'sole') {
+        if(userActivity === 'running' && scaleVal < 0.8) { readout.className = "warning"; readout.innerHTML = "<b>STRUCTURAL ALERT:</b><br>Sole thickness too low for Distance Running."; return; } 
+        else if (userPronation === 'overpronation' && scaleVal < 1.05) { readout.className = "warning"; readout.innerHTML = "<b>BIOMECHANICAL ALERT:</b><br>Overpronation detected. Increase sole thickness (Y > 1.05)."; return; }
+    }
+    readout.className = ""; readout.innerHTML = "SYS.CHECK: Biomechanics Nominal.<br>Structure within safe limits.";
+}
+
+function clearColorSelections() {
+    document.querySelectorAll('.color-swatch').forEach(sw => sw.classList.remove('selected'));
+    document.getElementById('gradient-btn').classList.remove('selected');
+}
+
+// 🚀 Save state per exact mesh name
+function updateSegmentState(type, color) {
+    if(!activePart) return;
+    segmentMaterialState[activePart.name] = segmentMaterialState[activePart.name] || {};
+    if(type) segmentMaterialState[activePart.name].type = type;
+    if(color) segmentMaterialState[activePart.name].color = color.replace('#', '');
+}
+
+window.applyCuratedColor = (hex, element) => { 
+    if(activePart) { 
+        activePart.material.color.set(hex); 
+        clearColorSelections(); 
+        element.classList.add('selected'); 
+        updateSegmentState(null, hex); 
+    } 
+};
+window.applyCustomColor = (hex) => { 
+    if(activePart) { 
+        activePart.material.color.set(hex); 
+        clearColorSelections(); 
+        document.getElementById('gradient-btn').classList.add('selected'); 
+        updateSegmentState(null, hex); 
+    } 
+};
+
+window.applyMaterial = (type, element) => {
+    if(!activePart) return;
+    document.querySelectorAll('#mat-container .mat-btn').forEach(btn => btn.classList.remove('selected')); 
+    element.classList.add('selected');
+    
+    let r = 0.6, m = 0.1;
+    if (type === 'glossy') { r = 0.15; m = 0.4; } 
+    else if (type === 'foam') { r = 0.95; m = 0.0; }
+    
+    activePart.material.roughness = r; 
+    activePart.material.metalness = m; 
+    
+    calculatePrice();
+    updateSegmentState(type, null);
+};
+
+function generateTextures() {
+    const cCanvas = document.createElement('canvas'); cCanvas.width = 256; cCanvas.height = 256;
+    const ctx1 = cCanvas.getContext('2d'); ctx1.fillStyle = '#888'; ctx1.fillRect(0,0,256,256); ctx1.fillStyle = '#000';
+    for(let i=0; i<256; i+=16) { for(let j=0; j<256; j+=16) { ctx1.beginPath(); ctx1.arc(i+8, j+8, 5, 0, Math.PI*2); ctx1.fill(); } }
+    proceduralTextures['carbon'] = new THREE.CanvasTexture(cCanvas); proceduralTextures['carbon'].wrapS = proceduralTextures['carbon'].wrapT = THREE.RepeatWrapping; proceduralTextures['carbon'].repeat.set(10, 10);
+    const rCanvas = document.createElement('canvas'); rCanvas.width = 256; rCanvas.height = 256;
+    const ctx2 = rCanvas.getContext('2d'); ctx2.fillStyle = '#888'; ctx2.fillRect(0,0,256,256); ctx2.fillStyle = '#222';
+    for(let i=0; i<256; i+=32) { ctx2.fillRect(0, i, 256, 16); }
+    proceduralTextures['ribbed'] = new THREE.CanvasTexture(rCanvas); proceduralTextures['ribbed'].wrapS = proceduralTextures['ribbed'].wrapT = THREE.RepeatWrapping; proceduralTextures['ribbed'].repeat.set(5, 5);
+}
+window.applyTexture = (type, element) => {
+    if(!activePart) return;
+    document.querySelectorAll('#advanced-textures .mat-btn').forEach(btn => btn.classList.remove('selected')); element.classList.add('selected');
+    let map = type === 'smooth' ? null : proceduralTextures[type];
+    activePart.material.bumpMap = map; if(map) activePart.material.bumpScale = 0.05; activePart.material.needsUpdate = true;
+};
+
+// 🚀 Restore based strictly on mesh name and original map
+function restoreModuleMaterials(targetGroup, oldCat) {
+    if(!targetGroup) return;
+    
+    targetGroup.traverse(node => {
+        if(node.isMesh) {
+            let state = segmentMaterialState[node.name];
+            
+            node.castShadow = true; node.receiveShadow = true;
+            node.geometry.computeVertexNormals(); 
+            
+            if(state) {
+                let colorHex = "#" + state.color;
+                node.material = new THREE.MeshStandardMaterial({
+                    color: colorHex, roughness: 0.6, metalness: 0.1, side: THREE.DoubleSide, flatShading: false
+                });
+                let r=0.6, m=0.1;
+                if(state.type === 'glossy') { r=0.15; m=0.4; } else if(state.type === 'foam') { r=0.95; m=0.0; }
+                node.material.roughness = r; node.material.metalness = m;
+            } else {
+                let ogColorHex = originalColors[oldCat] && originalColors[oldCat][node.name] ? originalColors[oldCat][node.name] : 0xffffff;
+                node.material = new THREE.MeshStandardMaterial({
+                    color: ogColorHex, roughness: 0.6, metalness: 0.1, side: THREE.DoubleSide, flatShading: false
+                });
+            }
+            
+            node.userData = { 
+                category: oldCat, 
+                name: node.name || oldCat.toUpperCase(), 
+                baseScale: node.scale.clone(), 
+                parentModule: targetGroup 
+            };
+            
+            selectableParts = selectableParts.filter(p => p.uuid !== node.uuid);
+            selectableParts.push(node);
+        }
+    });
+}
+
+function calculatePrice() {
+    let matUpcharges = 0; 
+    let uniqueMats = new Set();
+    Object.values(segmentMaterialState).forEach(s => { if(s.type && s.type !== 'standard') uniqueMats.add(s.type); });
+    
+    uniqueMats.forEach(m => { if(m==='foam') matUpcharges+=15; else if(m==='glossy') matUpcharges+=10; });
+
+    let total = basePrice + matUpcharges;
+    if (currentMode === 'advanced') total += 50; if (currentMode === 'designer') total += 80;
+    document.getElementById('price-tag').innerText = "$" + total;
+    return { base: basePrice, mats: matUpcharges, total: total };
+}
+
+window.showCheckout = () => {
+    const p = calculatePrice();
+    document.getElementById('receipt-materials').querySelector('span:nth-child(2)').innerText = "$" + p.mats.toFixed(2);
+    document.getElementById('receipt-advanced').style.display = currentMode === 'advanced' ? 'flex' : 'none';
+    document.getElementById('receipt-designer').style.display = currentMode === 'designer' ? 'flex' : 'none';
+    document.getElementById('receipt-total').innerText = "$" + p.total.toFixed(2);
+    const modal = document.getElementById('checkout-modal'); modal.style.display = 'flex'; setTimeout(() => { modal.classList.add('visible'); }, 10);
+};
+window.closeCheckout = () => { const modal = document.getElementById('checkout-modal'); modal.classList.remove('visible'); setTimeout(() => { modal.style.display = 'none'; }, 300); };
+window.takeSnapshot = () => {
+    const panel = document.getElementById('configurator-panel'); const snapBtn = document.getElementById('snapshot-btn');
+    panel.style.display = 'none'; snapBtn.style.display = 'none';
+    if(activePart) activePart.material.emissive.setHex(0x000000);
+    setTimeout(() => {
+        renderer.render(scene, camera);
+        const link = document.createElement('a'); link.download = 'Footlabs_Design.png'; link.href = renderer.domElement.toDataURL('image/png'); link.click();
+        panel.style.display = 'flex'; snapBtn.style.display = 'flex';
+        if(activePart) activePart.material.emissive.setHex(0x333333);
+    }, 150);
+};
+
+function animate() {
+    requestAnimationFrame(animate);
+    if (currentMode === 'designer') {
+        Object.values(shoeModules).forEach(mod => {
+            if (mod && mod.visible !== false && mod.userData.targetY !== undefined) {
+                if (Math.abs(mod.position.y - mod.userData.targetY) > 0.005) mod.position.y += (mod.userData.targetY - mod.position.y) * 0.15;
+            }
+        });
+    } else {
+        selectableParts.forEach(p => {
+            if (p.visible !== false && p.userData.targetY !== undefined) {
+                if (Math.abs(p.position.y - p.userData.targetY) > 0.005) p.position.y += (p.userData.targetY - p.position.y) * 0.15;
+            }
+        });
+    }
+    if(controls) controls.update(); if(renderer && scene && camera) renderer.render(scene, camera);
+}
+window.addEventListener('resize', () => {
+    const container = document.getElementById('canvas-container'); if(!container || !camera || !renderer) return; 
+    camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+window.setSculptTool = (tool, btn) => {
+    currentSculptTool = tool;
+    document.querySelectorAll('#sculpting-section .mat-btn').forEach(b => b.classList.remove('selected')); btn.classList.add('selected');
+    if (tool === 'none') {
+        document.getElementById('sculpt-controls').style.display = 'none'; document.getElementById('cad-sliders').style.display = 'block'; 
+    } else {
+        document.getElementById('sculpt-controls').style.display = 'block'; document.getElementById('cad-sliders').style.display = 'none'; 
+        if(!activePart) { showToast("Select a part first."); setSculptTool('none', document.querySelector('#sculpting-section .mat-btn')); }
+    }
+};
+
+window.executeCarve = () => {
+    if (sculptMarkers.length === 0) { showToast("Click the 3D model to place red cutting markers first."); return; }
+
+    showToast("Calculating exact spatial coordinates...");
+    
+    let marker = sculptMarkers[0]; 
+    let targetCategory = lastSelectedCategory; 
+    let wrapper = shoeModules[targetCategory];
+    let rootModel = wrapper.children[0]; 
+
+    let inverseQuat = rootModel.getWorldQuaternion(new THREE.Quaternion()).invert();
+    let localQuat = marker.quaternion.clone().premultiply(inverseQuat);
+    let localRot = new THREE.Euler().setFromQuaternion(localQuat);
+    let localPt = marker.position.clone();
+    rootModel.worldToLocal(localPt);
+
+    let visualSize = parseFloat(document.getElementById('tool-size').value);
+    let localSize = visualSize / shoe.scale.x; 
+
+    let cutData = {
+        category: targetCategory,
+        tool: currentSculptTool,
+        size: localSize,
+        x: localPt.x, y: localPt.y, z: localPt.z,
+        rx: localRot.x, ry: localRot.y, rz: localRot.z
+    };
+
+    fetch('/carve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cutData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === "success") {
+            showToast("Cut successful! Rendering new geometry...");
+            
+            setTimeout(() => {
+                const loader = new THREE.GLTFLoader(manager);
+                let timeStamp = new Date().getTime(); 
+                
+                let targetFileName = 'models/carved_' + targetCategory + '.glb';
+                
+                loader.load(targetFileName + '?t=' + timeStamp, (gltf) => {
+                    let newRawGroup = gltf.scene;
+                    let oldRawGroup = wrapper.children[0];
+
+                    newRawGroup.position.copy(oldRawGroup.position);
+                    newRawGroup.rotation.copy(oldRawGroup.rotation);
+                    newRawGroup.scale.copy(oldRawGroup.scale);
+
+                    oldRawGroup.traverse(node => {
+                        if(node.isMesh) {
+                            selectableParts = selectableParts.filter(p => p.uuid !== node.uuid);
+                            node.geometry.dispose();
+                            if(node.material) {
+                                if(node.material.map) node.material.map.dispose();
+                                node.material.dispose();
+                            }
+                        }
+                    });
+
+                    wrapper.remove(oldRawGroup);
+                    wrapper.add(newRawGroup);
+                    
+                    // 🚀 Restore segmented materials
+                    restoreModuleMaterials(newRawGroup, targetCategory);
+                    
+                    let first = null;
+                    newRawGroup.traverse(n => { if(n.isMesh && !first) first = n; });
+                    if (first) { selectPart(first); } else { activePart = null; }
+                    
+                    showToast("Live 3D Update Complete!");
+                });
+            }, 1000); 
+            
+        } else {
+            showToast("Python Error: " + data.message);
+        }
+        markerGroup.remove(marker);
+        sculptMarkers = sculptMarkers.filter(m => m !== marker);
+    })
+    .catch(error => {
+        console.error("Connection Error:", error); showToast("Error: Could not reach Python server.");
+    });
+};
+
+window.undoCarve = () => {
+    let targetCategory = lastSelectedCategory; 
+    if(!targetCategory) {
+        showToast("Please select a part to undo.");
+        return;
+    }
+
+    fetch('/undo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: targetCategory })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === "success") {
+            showToast("Undo successful! Restoring original...");
+            
+            let wrapper = shoeModules[targetCategory];
+            let originalFile = targetCategory === 'sole' ? 'sole 1.gltf' : targetCategory + '.gltf';
+            let timeStamp = new Date().getTime();
+            
+            const loader = new THREE.GLTFLoader(manager);
+            loader.load('models/' + originalFile + '?t=' + timeStamp, (gltf) => {
+                let newRawGroup = gltf.scene;
+                let oldRawGroup = wrapper.children[0];
+
+                newRawGroup.position.copy(oldRawGroup.position);
+                newRawGroup.rotation.copy(oldRawGroup.rotation);
+                newRawGroup.scale.copy(oldRawGroup.scale);
+
+                oldRawGroup.traverse(node => {
+                    if(node.isMesh) {
+                        selectableParts = selectableParts.filter(p => p.uuid !== node.uuid);
+                        node.geometry.dispose();
+                        if(node.material) node.material.dispose();
+                    }
+                });
+
+                wrapper.remove(oldRawGroup);
+                wrapper.add(newRawGroup);
+                
+                restoreModuleMaterials(newRawGroup, targetCategory);
+                
+                let first = null;
+                newRawGroup.traverse(n => { if(n.isMesh && !first) first = n; });
+                if (first) selectPart(first);
+                
+                markerGroup.clear();
+                sculptMarkers = [];
+            });
+        } else {
+            showToast("Undo Failed: " + data.message);
+        }
+    })
+    .catch(error => {
+        console.error("Connection Error:", error); showToast("Error: Could not reach Python server.");
+    });
+};
+</script>
+</body>
+</html>
