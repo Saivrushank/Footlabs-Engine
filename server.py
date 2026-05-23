@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import trimesh
 import os
+import numpy as np
 
 app = Flask(__name__, static_url_path='', static_folder='.')
 CORS(app) 
@@ -43,41 +44,40 @@ def carve_shoe():
     try:
         scene = trimesh.load(file_to_load, force='scene')
             
-        print("2. Generating Laser...")
-        if tool_type == 'cylinder':
-            cutter = trimesh.creation.cylinder(radius=size, height=500.0)
-        else:
-            cutter = trimesh.creation.box(extents=[size*2, 500.0, size*2])
-            
+       print("2. Calculating exact Laser trajectory...")
+        # Get the mathematical trajectory of the laser
         transform = trimesh.transformations.euler_matrix(rx, ry, rz, 'rxyz')
-        cutter.apply_transform(transform)
-        cutter.apply_translation([x, y, z])
+        transform[:3, 3] = [x, y, z]
+        inv_transform = np.linalg.inv(transform)
         
-        print("3. Melting scene into a single solid block...")
+        print("3. Melting scene into a single mesh...")
         solid_block = scene.dump(concatenate=True)
         
-        # --- THE WELDING BYPASS ---
-        # 1. Sew the panels together to close microscopic gaps
-        solid_block.merge_vertices()
-        solid_block.remove_degenerate_faces()
-        solid_block.fix_normals()
-        try:
-            solid_block.fill_holes()
-        except:
-            pass
-            
-        # 2. The Jedi Mind Trick: Force the strict engine to accept it
-        solid_block._cache['is_volume'] = True
-        solid_block._cache['is_watertight'] = True
-        # --------------------------
+        print("4. Blasting hole using Pure Math (Non-Manifold Safe)...")
+        # Move all shoe vertices into the "local coordinate space" of the laser to measure them
+        local_verts = trimesh.transformations.transform_points(solid_block.vertices, inv_transform)
         
-        print("4. Blasting hole through solid block...")
-        carved = trimesh.boolean.difference([solid_block, cutter], engine='manifold')
-        
-        if carved.is_empty or len(carved.faces) == len(solid_block.faces):
-            print("   ⚠️ NO CUT MADE. Laser missed or math failed.")
+        # Find exactly which vertices are touching the laser beam
+        if tool_type == 'cylinder':
+            # Cylinder math: x^2 + y^2 <= radius^2
+            r_sq = local_verts[:, 0]**2 + local_verts[:, 1]**2
+            inside = (r_sq <= size**2) & (np.abs(local_verts[:, 2]) <= 250)
         else:
-            print("   ✅ SUCCESS! Hole created.")
+            # Cuboid math: bounding box check
+            inside = (np.abs(local_verts[:, 0]) <= size) & \
+                     (np.abs(local_verts[:, 1]) <= 250) & \
+                     (np.abs(local_verts[:, 2]) <= size)
+                     
+        # Find which triangles (faces) of the shoe are inside the laser and delete them
+        faces_inside = inside[solid_block.faces]
+        hit_faces = faces_inside.any(axis=1) 
+        keep_faces = ~hit_faces
+        
+        solid_block.update_faces(keep_faces)
+        solid_block.remove_unreferenced_vertices()
+        
+        carved = solid_block
+        print("   ✅ SUCCESS! Triangles instantly deleted.")
         
         print("5. Saving...")
         new_scene = trimesh.Scene()
