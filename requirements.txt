@@ -1,7 +1,7 @@
 Flask==3.0.0
 flask-cors==4.0.0
-trimesh==4.0.5
-manifold3d==2.4.5
+trimesh==4.4.0
+manifold3d==3.5.0
 numpy==1.26.4
 scipy==1.11.4
 gunicorn==21.2.0
