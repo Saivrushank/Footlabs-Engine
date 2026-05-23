@@ -44,7 +44,7 @@ def carve_shoe():
     try:
         scene = trimesh.load(file_to_load, force='scene')
             
-       print("2. Calculating exact Laser trajectory...")
+        print("2. Calculating exact Laser trajectory...")
         # Get the mathematical trajectory of the laser
         transform = trimesh.transformations.euler_matrix(rx, ry, rz, 'rxyz')
         transform[:3, 3] = [x, y, z]
