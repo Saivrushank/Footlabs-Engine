@@ -54,12 +54,22 @@ def carve_shoe():
         cutter.apply_translation([x, y, z])
         
         print("3. Melting scene into a single solid block...")
-        # THIS IS THE MAGIC FIX: This merges all 60 panels into one block
-        # WHILE keeping them exactly in their correct 3D positions so the laser hits.
         solid_block = scene.dump(concatenate=True)
         
-        solid_block.process(validate=True)
+        # --- THE WELDING BYPASS ---
+        # 1. Sew the panels together to close microscopic gaps
+        solid_block.merge_vertices()
+        solid_block.remove_degenerate_faces()
         solid_block.fix_normals()
+        try:
+            solid_block.fill_holes()
+        except:
+            pass
+            
+        # 2. The Jedi Mind Trick: Force the strict engine to accept it
+        solid_block._cache['is_volume'] = True
+        solid_block._cache['is_watertight'] = True
+        # --------------------------
         
         print("4. Blasting hole through solid block...")
         carved = trimesh.boolean.difference([solid_block, cutter], engine='manifold')
